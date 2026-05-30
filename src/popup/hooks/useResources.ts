@@ -21,6 +21,20 @@ export function useResources() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id) throw new Error('No active tab');
 
+      // 先尝试注入 Content Script（如果已经注入会跳过）
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js'],
+        });
+      } catch (e) {
+        // 忽略注入错误（可能已经注入了）
+        console.log('Content script may already be injected');
+      }
+
+      // 等待一小段时间确保脚本加载
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       const response = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_RESOURCES' });
 
       if (response.success) {

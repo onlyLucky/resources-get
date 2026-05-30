@@ -6,6 +6,10 @@ import { extractDocuments } from './extractors/documentExtractor';
 // 高亮样式
 const HIGHLIGHT_STYLE_ID = 'resource-sniffer-highlight-style';
 const HIGHLIGHT_CLASS = 'resource-sniffer-highlight';
+const ACTIVE_HIGHLIGHT_CLASS = 'resource-sniffer-highlight-active';
+
+// 存储当前高亮的元素
+let currentHighlightedElement: Element | null = null;
 
 /**
  * 注入高亮样式
@@ -17,26 +21,54 @@ function injectHighlightStyle(): void {
   style.id = HIGHLIGHT_STYLE_ID;
   style.textContent = `
     .${HIGHLIGHT_CLASS} {
-      outline: 3px solid #ef4444 !important;
-      outline-offset: 2px !important;
-      box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.3) !important;
-      transition: outline 0.3s ease, box-shadow 0.3s ease !important;
+      border: 4px solid #ef4444 !important;
+      transition: border 0.3s ease !important;
+      position: relative !important;
+      z-index: 999999 !important;
+    }
+    .${ACTIVE_HIGHLIGHT_CLASS} {
+      border: 4px solid #3b82f6 !important;
+      transition: border 0.3s ease !important;
+      position: relative !important;
+      z-index: 999999 !important;
     }
   `;
   document.head.appendChild(style);
 }
 
 /**
+ * 清除所有高亮
+ */
+function clearAllHighlights(): void {
+  document.querySelectorAll(`.${HIGHLIGHT_CLASS}, .${ACTIVE_HIGHLIGHT_CLASS}`).forEach(el => {
+    el.classList.remove(HIGHLIGHT_CLASS, ACTIVE_HIGHLIGHT_CLASS);
+  });
+  currentHighlightedElement = null;
+}
+
+/**
  * 高亮元素
  */
-function highlightElement(element: Element): void {
+function highlightElement(element: Element, persistent: boolean = false): void {
   injectHighlightStyle();
-  element.classList.add(HIGHLIGHT_CLASS);
 
-  // 2.5 秒后移除高亮
-  setTimeout(() => {
-    element.classList.remove(HIGHLIGHT_CLASS);
-  }, 2500);
+  // 清除之前的高亮
+  if (currentHighlightedElement && currentHighlightedElement !== element) {
+    currentHighlightedElement.classList.remove(HIGHLIGHT_CLASS, ACTIVE_HIGHLIGHT_CLASS);
+  }
+
+  element.classList.add(HIGHLIGHT_CLASS);
+  currentHighlightedElement = element;
+
+  // 如果不是持久高亮，2.5 秒后移除
+  if (!persistent) {
+    setTimeout(() => {
+      element.classList.remove(HIGHLIGHT_CLASS);
+      if (currentHighlightedElement === element) {
+        currentHighlightedElement = null;
+      }
+    }, 2500);
+  }
 }
 
 /**
@@ -101,14 +133,40 @@ function findElementByUrl(url: string): Element | null {
 }
 
 /**
- * 提取所有资源
+ * 获取文件大小
  */
-function extractAllResources(): Resource[] {
+async function fetchResourceSize(url: string): Promise<number> {
+  try {
+    const response = await fetch(url, { method: 'HEAD', mode: 'no-cors' });
+    const contentLength = response.headers.get('content-length');
+    return contentLength ? parseInt(contentLength, 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 提取所有资源并获取大小
+ */
+async function extractAllResources(): Promise<Resource[]> {
   const images = extractImages();
   const media = extractMedia();
   const documents = extractDocuments();
+  const allResources = [...images, ...media, ...documents];
 
-  return [...images, ...media, ...documents];
+  // 并发获取所有资源的大小（限制并发数）
+  const batchSize = 5;
+  for (let i = 0; i < allResources.length; i += batchSize) {
+    const batch = allResources.slice(i, i + batchSize);
+    const sizes = await Promise.all(
+      batch.map(resource => fetchResourceSize(resource.url))
+    );
+    batch.forEach((resource, index) => {
+      resource.size = sizes[index];
+    });
+  }
+
+  return allResources;
 }
 
 // 监听来自 popup 的消息
@@ -116,13 +174,14 @@ chrome.runtime.onMessage.addListener(
   (message: Message, _sender, sendResponse) => {
     switch (message.type) {
       case 'EXTRACT_RESOURCES':
-        try {
-          const resources = extractAllResources();
-          sendResponse({ success: true, data: resources });
-        } catch (error) {
-          sendResponse({ success: false, error: String(error) });
-        }
-        break;
+        extractAllResources()
+          .then(resources => {
+            sendResponse({ success: true, data: resources });
+          })
+          .catch(error => {
+            sendResponse({ success: false, error: String(error) });
+          });
+        return true; // 保持消息通道开启，等待异步响应
 
       case 'SCROLL_TO_ELEMENT':
         if (message.data?.location) {
@@ -135,12 +194,17 @@ chrome.runtime.onMessage.addListener(
         if (message.data?.url) {
           const element = findElementByUrl(message.data.url);
           if (element) {
-            highlightElement(element);
+            highlightElement(element, message.data.persistent || false);
             sendResponse({ success: true });
           } else {
             sendResponse({ success: false, error: 'Element not found' });
           }
         }
+        break;
+
+      case 'CLEAR_HIGHLIGHTS':
+        clearAllHighlights();
+        sendResponse({ success: true });
         break;
     }
 

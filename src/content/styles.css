@@ -1,8 +1,8 @@
 /* Resource Sniffer Content Script Styles */
 
 .resource-sniffer-highlight {
-  outline: 3px solid #ef4444 !important;
-  outline-offset: 2px !important;
-  box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.3) !important;
-  transition: outline 0.3s ease, box-shadow 0.3s ease !important;
+  border: 3px solid #ef4444 !important;
+  /* outline-offset: 2px !important;
+  box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.3) !important; */
+  transition: border 0.3s ease !important;
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Resource } from '@/types';
 import { downloadAll, downloadAsZip } from '@/utils/download';
+import { Download, Package, Loader2 } from 'lucide-react';
 
 interface DownloadBarProps {
   resources: Resource[];
@@ -79,7 +80,10 @@ export const DownloadBar: React.FC<DownloadBarProps> = ({
       {downloading && progress.total > 0 && (
         <div className="mb-3">
           <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>下载中...</span>
+            <span className="flex items-center gap-1">
+              <Loader2 size={12} className="animate-spin" />
+              下载中...
+            </span>
             <span>{progress.current}/{progress.total}</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
@@ -121,15 +125,17 @@ export const DownloadBar: React.FC<DownloadBarProps> = ({
             <button
               onClick={() => handleDownloadSelected(false)}
               disabled={downloading}
-              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
+              <Download size={14} />
               逐个下载
             </button>
             <button
               onClick={() => handleDownloadSelected(true)}
               disabled={downloading}
-              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
+              <Package size={14} />
               打包下载
             </button>
           </div>
@@ -138,15 +144,17 @@ export const DownloadBar: React.FC<DownloadBarProps> = ({
             <button
               onClick={() => handleDownloadAll(false)}
               disabled={downloading}
-              className="px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
+              <Download size={14} />
               全部下载
             </button>
             <button
               onClick={() => handleDownloadAll(true)}
               disabled={downloading}
-              className="px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
+              <Package size={14} />
               全部打包
             </button>
           </div>

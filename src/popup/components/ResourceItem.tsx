@@ -1,6 +1,8 @@
 import React from 'react';
 import { Resource } from '@/types';
 import { formatFileSize } from '@/utils/fileSize';
+import { Image, Film, Music, File, Folder, Download } from 'lucide-react';
+import { Tooltip } from './Tooltip';
 
 interface ResourceItemProps {
   resource: Resource;
@@ -11,11 +13,11 @@ interface ResourceItemProps {
 }
 
 // 资源类型图标
-const typeIcons: Record<string, string> = {
-  image: '🖼️',
-  video: '🎬',
-  audio: '🎵',
-  document: '📄',
+const typeIcons: Record<string, React.ReactNode> = {
+  image: <Image size={24} className="text-green-500" />,
+  video: <Film size={24} className="text-purple-500" />,
+  audio: <Music size={24} className="text-orange-500" />,
+  document: <File size={24} className="text-blue-500" />,
 };
 
 // 资源类型标签颜色
@@ -73,15 +75,19 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
             }}
           />
         ) : (
-          <span className="text-2xl">{typeIcons[resource.type] || '📁'}</span>
+          typeIcons[resource.type] || <Folder size={24} className="text-gray-400" />
         )}
       </div>
 
       {/* 信息区域 */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-900 truncate">{resource.name}</span>
-          <span className={`px-1.5 py-0.5 text-xs rounded-full ${typeColors[resource.type]}`}>
+          <Tooltip content={resource.name}>
+            <span className="text-sm font-medium text-gray-900 truncate block max-w-[200px]">
+              {resource.name}
+            </span>
+          </Tooltip>
+          <span className={`px-1.5 py-0.5 text-xs rounded-full flex-shrink-0 ${typeColors[resource.type]}`}>
             {resource.type}
           </span>
         </div>
@@ -98,14 +104,7 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
         className="flex-shrink-0 p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
         title="下载"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-          />
-        </svg>
+        <Download size={16} />
       </button>
     </div>
   );

@@ -8,6 +8,7 @@ import { SearchBar } from './components/SearchBar';
 import { ResourceList } from './components/ResourceList';
 import { DownloadBar } from './components/DownloadBar';
 import { AutoDetectToggle } from './components/AutoDetectToggle';
+import { Loader2, Search, AlertCircle, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const {
@@ -34,13 +35,48 @@ const App: React.FC = () => {
   } = useSelection();
 
   const [autoDetect, setAutoDetect] = useState(false);
+  const [autoDetectLoaded, setAutoDetectLoaded] = useState(false);
 
-  // 自动嗅探
+  // 加载自动嗅探状态
   useEffect(() => {
-    if (autoDetect) {
+    chrome.storage.local.get(['autoDetect'], (result) => {
+      if (result.autoDetect !== undefined) {
+        setAutoDetect(result.autoDetect);
+      }
+      setAutoDetectLoaded(true);
+    });
+  }, []);
+
+  // 保存自动嗅探状态
+  const handleAutoDetectChange = (value: boolean) => {
+    setAutoDetect(value);
+    chrome.storage.local.set({ autoDetect: value });
+  };
+
+  // 自动嗅探（仅在状态加载完成后且开启时执行）
+  useEffect(() => {
+    if (autoDetectLoaded && autoDetect) {
       extractResources();
     }
-  }, [autoDetect, extractResources]);
+  }, [autoDetectLoaded, autoDetect, extractResources]);
+
+  // 清除所有高亮标记
+  const clearAllHighlights = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab.id) {
+        await chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_HIGHLIGHTS' });
+      }
+    } catch (error) {
+      console.error('Failed to clear highlights:', error);
+    }
+  };
+
+  // 切换分类时清除高亮
+  const handleCategoryChange = (newCategory: typeof category) => {
+    clearAllHighlights();
+    setCategory(newCategory);
+  };
 
   // 点击资源项 - 滚动到元素并高亮
   const handleResourceClick = async (resource: Resource) => {
@@ -56,10 +92,10 @@ const App: React.FC = () => {
         });
       }
 
-      // 高亮元素
+      // 高亮元素（持久高亮）
       await chrome.tabs.sendMessage(tab.id, {
         type: 'HIGHLIGHT_ELEMENT',
-        data: { url: resource.url },
+        data: { url: resource.url, persistent: true },
       });
     } catch (error) {
       console.error('Failed to scroll/highlight:', error);
@@ -85,14 +121,14 @@ const App: React.FC = () => {
           >
             {loading ? (
               <span className="flex items-center gap-1">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
+                <Loader2 size={16} className="animate-spin" />
                 嗅探中...
               </span>
             ) : (
-              '嗅探'
+              <span className="flex items-center gap-1">
+                <Search size={16} />
+                嗅探
+              </span>
             )}
           </button>
         </div>
@@ -102,7 +138,7 @@ const App: React.FC = () => {
       <TabBar
         activeCategory={category}
         counts={counts}
-        onCategoryChange={setCategory}
+        onCategoryChange={handleCategoryChange}
       />
 
       {/* 搜索和排序 */}

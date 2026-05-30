@@ -13,6 +13,9 @@ export default defineConfig({
         // 复制 manifest.json 到 dist
         copyFileSync('public/manifest.json', 'dist/manifest.json');
 
+        // 复制 content.css 到 dist
+        copyFileSync('src/content/content.css', 'dist/content.css');
+
         // 复制图标
         const iconsDir = 'public/icons';
         const distIconsDir = 'dist/icons';
