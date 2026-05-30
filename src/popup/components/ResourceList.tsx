@@ -1,7 +1,7 @@
 import React from 'react';
 import { Resource } from '@/types';
 import { ResourceItem } from './ResourceItem';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, Loader2 } from 'lucide-react';
 
 interface ResourceListProps {
   resources: Resource[];
@@ -9,6 +9,7 @@ interface ResourceListProps {
   onToggleSelect: (id: string) => void;
   onClick: (resource: Resource) => void;
   onDownload: (resource: Resource) => void;
+  loading?: boolean;
 }
 
 export const ResourceList: React.FC<ResourceListProps> = ({
@@ -17,7 +18,17 @@ export const ResourceList: React.FC<ResourceListProps> = ({
   onToggleSelect,
   onClick,
   onDownload,
+  loading = false,
 }) => {
+  if (loading && resources.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center py-12 text-gray-400">
+        <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
+        <p className="text-sm text-gray-600">正在嗅探页面资源...</p>
+      </div>
+    );
+  }
+
   if (resources.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-gray-400">

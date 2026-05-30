@@ -39,18 +39,25 @@ const App: React.FC = () => {
 
   // 加载自动嗅探状态
   useEffect(() => {
-    chrome.storage.local.get(['autoDetect'], (result) => {
-      if (result.autoDetect !== undefined) {
-        setAutoDetect(result.autoDetect);
-      }
+    if (chrome?.storage?.local) {
+      chrome.storage.local.get(['autoDetect'], (result) => {
+        if (result.autoDetect !== undefined) {
+          setAutoDetect(result.autoDetect);
+        }
+        setAutoDetectLoaded(true);
+      });
+    } else {
+      // chrome.storage 不可用时直接标记为已加载
       setAutoDetectLoaded(true);
-    });
+    }
   }, []);
 
   // 保存自动嗅探状态
   const handleAutoDetectChange = (value: boolean) => {
     setAutoDetect(value);
-    chrome.storage.local.set({ autoDetect: value });
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({ autoDetect: value });
+    }
   };
 
   // 自动嗅探（仅在状态加载完成后且开启时执行）
@@ -113,7 +120,7 @@ const App: React.FC = () => {
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
         <h1 className="text-lg font-semibold text-gray-900">资源嗅探器</h1>
         <div className="flex items-center gap-3">
-          <AutoDetectToggle enabled={autoDetect} onChange={setAutoDetect} />
+          <AutoDetectToggle enabled={autoDetect} onChange={handleAutoDetectChange} />
           <button
             onClick={extractResources}
             disabled={loading}
@@ -149,10 +156,31 @@ const App: React.FC = () => {
         onSortChange={setSortBy}
       />
 
+      {/* 加载状态 */}
+      {loading && resources.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center py-12">
+          <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
+          <p className="text-sm text-gray-600">正在嗅探页面资源...</p>
+          <p className="text-xs text-gray-400 mt-1">请稍候</p>
+        </div>
+      )}
+
       {/* 错误提示 */}
       {error && (
         <div className="mx-3 mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-600">{error}</p>
+          <div className="flex items-start gap-2">
+            <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-red-600">{error}</p>
+              <button
+                onClick={extractResources}
+                className="mt-2 flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium"
+              >
+                <RefreshCw size={12} />
+                重试
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -163,6 +191,7 @@ const App: React.FC = () => {
         onToggleSelect={toggleSelection}
         onClick={handleResourceClick}
         onDownload={handleDownloadSingle}
+        loading={loading}
       />
 
       {/* 下载操作栏 */}

@@ -16,6 +16,7 @@ export function useResources() {
   const extractResources = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setResources([]); // 清空已有列表
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });

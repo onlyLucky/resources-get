@@ -3,6 +3,12 @@ import { extractImages } from './extractors/imageExtractor';
 import { extractMedia } from './extractors/mediaExtractor';
 import { extractDocuments } from './extractors/documentExtractor';
 
+// 防止重复注入
+if ((window as any).__RESOURCE_SNIFFER_LOADED__) {
+  console.log('[Resource Sniffer] Already loaded, skipping...');
+} else {
+  (window as any).__RESOURCE_SNIFFER_LOADED__ = true;
+
 // 高亮样式
 const HIGHLIGHT_STYLE_ID = 'resource-sniffer-highlight-style';
 const HIGHLIGHT_CLASS = 'resource-sniffer-highlight';
@@ -133,11 +139,42 @@ function findElementByUrl(url: string): Element | null {
 }
 
 /**
+ * 从 Performance API 获取资源大小
+ */
+function getSizeFromPerformance(url: string): number {
+  try {
+    const entries = performance.getEntriesByName(url);
+    if (entries.length > 0) {
+      const entry = entries[0] as PerformanceResourceTiming;
+      return entry.transferSize || entry.encodedBodySize || 0;
+    }
+  } catch {
+    // 忽略错误
+  }
+  return 0;
+}
+
+/**
  * 获取文件大小
  */
 async function fetchResourceSize(url: string): Promise<number> {
+  // 首先尝试从 Performance API 获取
+  const perfSize = getSizeFromPerformance(url);
+  if (perfSize > 0) {
+    return perfSize;
+  }
+
+  // 尝试 fetch 获取
   try {
-    const response = await fetch(url, { method: 'HEAD', mode: 'no-cors' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
     const contentLength = response.headers.get('content-length');
     return contentLength ? parseInt(contentLength, 10) : 0;
   } catch {
@@ -155,7 +192,7 @@ async function extractAllResources(): Promise<Resource[]> {
   const allResources = [...images, ...media, ...documents];
 
   // 并发获取所有资源的大小（限制并发数）
-  const batchSize = 5;
+  const batchSize = 10;
   for (let i = 0; i < allResources.length; i += batchSize) {
     const batch = allResources.slice(i, i + batchSize);
     const sizes = await Promise.all(
@@ -216,3 +253,5 @@ chrome.runtime.onMessage.addListener(
 injectHighlightStyle();
 
 console.log('[Resource Sniffer] Content script loaded');
+
+} // end of if __RESOURCE_SNIFFER_LOADED__
