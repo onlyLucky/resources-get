@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="20" fill="url(#grad)"/>
+  <g transform="translate(24, 24)" fill="white">
+    <!-- 搜索图标 -->
+    <circle cx="40" cy="40" r="28" stroke="white" stroke-width="8" fill="none"/>
+    <line x1="60" y1="60" x2="80" y2="80" stroke="white" stroke-width="8" stroke-linecap="round"/>
+    <!-- 资源图标 -->
+    <rect x="15" y="15" width="20" height="20" rx="4" fill="white" opacity="0.8"/>
+    <rect x="45" y="15" width="20" height="20" rx="4" fill="white" opacity="0.6"/>
+    <rect x="15" y="45" width="20" height="20" rx="4" fill="white" opacity="0.4"/>
+  </g>
+</svg>
