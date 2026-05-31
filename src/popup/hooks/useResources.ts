@@ -1,5 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Resource, ResourceCategory, SortBy } from '@/types';
+
+// 缓存 key
+const CACHE_KEY = 'resource-sniffer-cache';
 
 /**
  * 资源管理 Hook
@@ -10,13 +13,55 @@ export function useResources() {
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<ResourceCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortBy>('name');
+  const [sortBy, setSortBy] = useState<SortBy>('size-desc');
+  const [hasExtracted, setHasExtracted] = useState(false);
 
-  // 提取资源
-  const extractResources = useCallback(async () => {
+  // 加载缓存的资源
+  useEffect(() => {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.get([CACHE_KEY], (result) => {
+        if (result[CACHE_KEY]) {
+          const cached = result[CACHE_KEY];
+          // 检查缓存是否是当前标签页的（通过时间戳判断，5 分钟内有效）
+          const now = Date.now();
+          if (cached.timestamp && now - cached.timestamp < 5 * 60 * 1000) {
+            setResources(cached.resources || []);
+            setHasExtracted(true);
+          }
+        }
+      });
+    }
+  }, []);
+
+  // 保存资源到缓存
+  const saveToCache = useCallback((resourcesToSave: Resource[]) => {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.set({
+        [CACHE_KEY]: {
+          resources: resourcesToSave,
+          timestamp: Date.now(),
+        }
+      });
+    }
+  }, []);
+
+  // 清除缓存
+  const clearCache = useCallback(() => {
+    if (chrome?.storage?.local) {
+      chrome.storage.local.remove(CACHE_KEY);
+    }
+  }, []);
+
+  // 提取资源（用户点击嗅探按钮时调用）
+  const extractResources = useCallback(async (forceRefresh: boolean = true) => {
     setLoading(true);
     setError(null);
-    setResources([]); // 清空已有列表
+
+    // 如果是强制刷新，清空列表
+    if (forceRefresh) {
+      setResources([]);
+      clearCache();
+    }
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -40,6 +85,9 @@ export function useResources() {
 
       if (response.success) {
         setResources(response.data);
+        setHasExtracted(true);
+        // 保存到缓存
+        saveToCache(response.data);
       } else {
         throw new Error(response.error || 'Failed to extract resources');
       }
@@ -49,7 +97,7 @@ export function useResources() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [saveToCache, clearCache]);
 
   // 过滤资源
   const filteredResources = resources.filter(resource => {
@@ -105,9 +153,11 @@ export function useResources() {
     searchQuery,
     sortBy,
     counts,
+    hasExtracted,
     setCategory,
     setSearchQuery,
     setSortBy,
     extractResources,
+    clearCache,
   };
 }

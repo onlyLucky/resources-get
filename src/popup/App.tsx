@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Resource } from '@/types';
 import { downloadSingle } from '@/utils/download';
+import { formatFileSize } from '@/utils/fileSize';
 import { useResources } from './hooks/useResources';
 import { useSelection } from './hooks/useSelection';
 import { TabBar } from './components/TabBar';
@@ -8,7 +9,7 @@ import { SearchBar } from './components/SearchBar';
 import { ResourceList } from './components/ResourceList';
 import { DownloadBar } from './components/DownloadBar';
 import { AutoDetectToggle } from './components/AutoDetectToggle';
-import { Loader2, Search, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, Search, AlertCircle, RefreshCw, PanelRightOpen } from 'lucide-react';
 
 const App: React.FC = () => {
   const {
@@ -19,6 +20,7 @@ const App: React.FC = () => {
     searchQuery,
     sortBy,
     counts,
+    hasExtracted,
     setCategory,
     setSearchQuery,
     setSortBy,
@@ -36,6 +38,7 @@ const App: React.FC = () => {
 
   const [autoDetect, setAutoDetect] = useState(false);
   const [autoDetectLoaded, setAutoDetectLoaded] = useState(false);
+  const isPopupOpen = useRef(true);
 
   // 加载自动嗅探状态
   useEffect(() => {
@@ -60,12 +63,29 @@ const App: React.FC = () => {
     }
   };
 
-  // 自动嗅探（仅在状态加载完成后且开启时执行）
+  // 自动嗅探（仅在状态加载完成后且开启时执行，且未嗅探过时）
   useEffect(() => {
-    if (autoDetectLoaded && autoDetect) {
+    if (autoDetectLoaded && autoDetect && !hasExtracted) {
       extractResources();
     }
-  }, [autoDetectLoaded, autoDetect, extractResources]);
+  }, [autoDetectLoaded, autoDetect, hasExtracted, extractResources]);
+
+  // popup 关闭时清除高亮标记
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      isPopupOpen.current = false;
+      // 清除高亮标记
+      clearAllHighlights();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // 组件卸载时也清除高亮
+      clearAllHighlights();
+    };
+  }, []);
 
   // 清除所有高亮标记
   const clearAllHighlights = async () => {
@@ -91,18 +111,17 @@ const App: React.FC = () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id) return;
 
-      // 滚动到元素位置
-      if (resource.location) {
-        await chrome.tabs.sendMessage(tab.id, {
-          type: 'SCROLL_TO_ELEMENT',
-          data: { location: resource.location },
-        });
-      }
-
-      // 高亮元素（持久高亮）
+      // 高亮元素（持久高亮），传递文件名和大小
+      // Content Script 会自动处理滚动和高亮
       await chrome.tabs.sendMessage(tab.id, {
         type: 'HIGHLIGHT_ELEMENT',
-        data: { url: resource.url, persistent: true },
+        data: {
+          url: resource.url,
+          persistent: true,
+          fileName: resource.name,
+          fileSize: resource.size > 0 ? formatFileSize(resource.size) : undefined,
+          location: resource.location,
+        },
       });
     } catch (error) {
       console.error('Failed to scroll/highlight:', error);
@@ -114,17 +133,33 @@ const App: React.FC = () => {
     await downloadSingle(resource);
   };
 
+  // 打开侧边栏
+  const openSidePanel = async () => {
+    try {
+      if (chrome?.sidePanel?.open) {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab.id) {
+          await chrome.sidePanel.open({ tabId: tab.id });
+          // 关闭 popup
+          window.close();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open side panel:', error);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* 头部 */}
       <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
         <h1 className="text-lg font-semibold text-gray-900">资源嗅探器</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <AutoDetectToggle enabled={autoDetect} onChange={handleAutoDetectChange} />
           <button
-            onClick={extractResources}
+            onClick={() => extractResources(true)}
             disabled={loading}
-            className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? (
               <span className="flex items-center gap-1">
@@ -137,6 +172,13 @@ const App: React.FC = () => {
                 嗅探
               </span>
             )}
+          </button>
+          <button
+            onClick={openSidePanel}
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+            title="在侧边栏中打开"
+          >
+            <PanelRightOpen size={18} />
           </button>
         </div>
       </div>
@@ -156,15 +198,6 @@ const App: React.FC = () => {
         onSortChange={setSortBy}
       />
 
-      {/* 加载状态 */}
-      {loading && resources.length === 0 && (
-        <div className="flex-1 flex flex-col items-center justify-center py-12">
-          <Loader2 size={48} className="text-blue-500 animate-spin mb-4" />
-          <p className="text-sm text-gray-600">正在嗅探页面资源...</p>
-          <p className="text-xs text-gray-400 mt-1">请稍候</p>
-        </div>
-      )}
-
       {/* 错误提示 */}
       {error && (
         <div className="mx-3 mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
@@ -173,7 +206,7 @@ const App: React.FC = () => {
             <div className="flex-1">
               <p className="text-sm text-red-600">{error}</p>
               <button
-                onClick={extractResources}
+                onClick={() => extractResources(true)}
                 className="mt-2 flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium"
               >
                 <RefreshCw size={12} />

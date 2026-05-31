@@ -4,7 +4,7 @@
  * @returns 格式化后的字符串
  */
 export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return '未知';
 
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];

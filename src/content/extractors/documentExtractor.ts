@@ -31,6 +31,7 @@ export function extractDocuments(): Resource[] {
     if (ext && DOCUMENT_EXTENSIONS.includes(ext)) {
       if (!seenUrls.has(href)) {
         seenUrls.add(href);
+        const rect = link.getBoundingClientRect();
         documents.push({
           id: generateId(),
           url: href,
@@ -38,6 +39,12 @@ export function extractDocuments(): Resource[] {
           type: 'document',
           size: 0,
           mimeType: guessMimeType(href),
+          location: {
+            x: rect.left + window.scrollX,
+            y: rect.top + window.scrollY,
+            width: rect.width,
+            height: rect.height,
+          },
         });
       }
     }
