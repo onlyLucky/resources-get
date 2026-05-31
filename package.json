@@ -8,7 +8,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "package": "pnpm run build && cd dist && zip -r ../resource-sniffer.zip . && cd ..",
+    "package:win": "pnpm run build && cd dist && powershell Compress-Archive -Path * -DestinationPath ../resource-sniffer.zip -Force && cd ..",
+    "release": "./scripts/package.sh"
   },
   "dependencies": {
     "jszip": "^3.10.1",

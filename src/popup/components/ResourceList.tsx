@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Resource } from '@/types';
 import { ResourceItem } from './ResourceItem';
 import { FolderOpen, Loader2 } from 'lucide-react';
@@ -20,6 +20,13 @@ export const ResourceList: React.FC<ResourceListProps> = ({
   onDownload,
   loading = false,
 }) => {
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const handleClick = (resource: Resource) => {
+    setActiveId(resource.id);
+    onClick(resource);
+  };
+
   if (loading && resources.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center py-12 text-gray-400">
@@ -46,8 +53,9 @@ export const ResourceList: React.FC<ResourceListProps> = ({
           key={resource.id}
           resource={resource}
           isSelected={selectedIds.has(resource.id)}
+          isActive={activeId === resource.id}
           onToggleSelect={onToggleSelect}
-          onClick={onClick}
+          onClick={handleClick}
           onDownload={onDownload}
         />
       ))}

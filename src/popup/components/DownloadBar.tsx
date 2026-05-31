@@ -51,6 +51,8 @@ export const DownloadBar: React.FC<DownloadBarProps> = ({
     } finally {
       setDownloading(false);
       setProgress({ current: 0, total: 0 });
+      // 下载完成后重置勾选
+      onDeselectAll();
     }
   };
 

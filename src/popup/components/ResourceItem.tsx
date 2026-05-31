@@ -7,6 +7,7 @@ import { Tooltip } from './Tooltip';
 interface ResourceItemProps {
   resource: Resource;
   isSelected: boolean;
+  isActive?: boolean;
   onToggleSelect: (id: string) => void;
   onClick: (resource: Resource) => void;
   onDownload: (resource: Resource) => void;
@@ -31,6 +32,7 @@ const typeColors: Record<string, string> = {
 export const ResourceItem: React.FC<ResourceItemProps> = ({
   resource,
   isSelected,
+  isActive = false,
   onToggleSelect,
   onClick,
   onDownload,
@@ -41,7 +43,6 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
   // 当图片加载失败时，通过 content script 获取图片
   useEffect(() => {
     if (resource.type === 'image' && imageError && resource.thumbnail) {
-      // 通过 content script 获取图片数据
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tabId = tabs[0]?.id;
         if (!tabId) return;
@@ -67,7 +68,9 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
     onToggleSelect(resource.id);
   };
 
-  const handleClick = () => {
+  // 只有点击文件信息区域才触发标记滚动
+  const handleInfoClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     onClick(resource);
   };
 
@@ -81,22 +84,31 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
     setImageSrc(undefined);
   };
 
+  // 根据状态确定样式
+  const getItemStyle = () => {
+    if (isActive) return 'bg-blue-100 border-l-4 border-l-blue-500';
+    if (isSelected) return 'bg-blue-50';
+    return 'hover:bg-gray-50';
+  };
+
   return (
     <div
-      className={`flex items-center gap-3 p-3 border-b border-gray-100 cursor-pointer transition-colors
-        ${isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
-      onClick={handleClick}
+      className={`flex items-center gap-3 p-3 border-b border-gray-100 transition-colors ${getItemStyle()}`}
     >
-      {/* 复选框 */}
+      {/* 复选框 - 点击不触发标记滚动 */}
       <input
         type="checkbox"
         checked={isSelected}
         onChange={handleCheckboxChange}
-        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+        onClick={(e) => e.stopPropagation()}
       />
 
-      {/* 预览图/图标 */}
-      <div className="w-12 h-12 flex-shrink-0 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
+      {/* 预览图/图标 - 点击不触发标记滚动 */}
+      <div
+        className="w-12 h-12 flex-shrink-0 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center"
+        onClick={(e) => e.stopPropagation()}
+      >
         {resource.type === 'image' && imageSrc ? (
           <img
             src={imageSrc}
@@ -109,8 +121,11 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
         )}
       </div>
 
-      {/* 信息区域 */}
-      <div className="flex-1 min-w-0">
+      {/* 信息区域 - 点击触发标记滚动 */}
+      <div
+        className="flex-1 min-w-0 cursor-pointer"
+        onClick={handleInfoClick}
+      >
         <div className="flex items-center gap-2">
           <Tooltip content={resource.name}>
             <span className="text-sm font-medium text-gray-900 truncate block max-w-[200px]">
@@ -128,7 +143,7 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
         </div>
       </div>
 
-      {/* 下载按钮 */}
+      {/* 下载按钮 - 点击不触发标记滚动 */}
       <button
         onClick={handleDownload}
         className="flex-shrink-0 p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
