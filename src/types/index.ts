@@ -26,6 +26,6 @@ export type SortBy = 'name' | 'size-asc' | 'size-desc' | 'type';
 
 // 通信消息类型
 export interface Message {
-  type: 'EXTRACT_RESOURCES' | 'SCROLL_TO_ELEMENT' | 'HIGHLIGHT_ELEMENT' | 'RESOURCES_EXTRACTED' | 'CLEAR_HIGHLIGHTS' | 'DOWNLOAD_RESOURCE';
+  type: 'EXTRACT_RESOURCES' | 'SCROLL_TO_ELEMENT' | 'HIGHLIGHT_ELEMENT' | 'RESOURCES_EXTRACTED' | 'CLEAR_HIGHLIGHTS' | 'DOWNLOAD_RESOURCE' | 'FETCH_IMAGE' | 'FETCH_RESOURCE_BLOB';
   data?: any;
 }

@@ -59,18 +59,49 @@ function downloadViaContentScript(resource: Resource): Promise<boolean> {
 }
 
 /**
- * 带 credentials 的 fetch 请求
+ * 通过 Content Script 获取资源数据（用于打包下载）
  */
-async function fetchWithCredentials(url: string): Promise<Blob> {
-  const response = await fetch(url, {
-    credentials: 'include',
+function fetchResourceViaContentScript(url: string): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tabId = tabs[0]?.id;
+        if (!tabId) {
+          resolve(null);
+          return;
+        }
+
+        chrome.tabs.sendMessage(
+          tabId,
+          {
+            type: 'FETCH_RESOURCE_BLOB',
+            data: { url },
+          },
+          (response) => {
+            if (chrome.runtime.lastError || !response?.success) {
+              console.error('[Fetch] Content script error:', chrome.runtime.lastError);
+              resolve(null);
+            } else {
+              // 将 base64 转回 Blob
+              try {
+                const binary = atob(response.data);
+                const array = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                  array[i] = binary.charCodeAt(i);
+                }
+                resolve(new Blob([array], { type: response.type }));
+              } catch {
+                resolve(null);
+              }
+            }
+          }
+        );
+      });
+    } catch (error) {
+      console.error('[Fetch] Content script exception:', error);
+      resolve(null);
+    }
   });
-
-  if (!response.ok) {
-    throw new Error('HTTP ' + response.status);
-  }
-
-  return response.blob();
 }
 
 /**
@@ -116,10 +147,16 @@ export async function downloadAsZip(
   for (let i = 0; i < resources.length; i++) {
     const resource = resources[i];
     try {
-      const blob = await fetchWithCredentials(resource.url);
-      zip.file(resource.name, blob);
+      console.log('[Zip] Fetching:', resource.name);
+      const blob = await fetchResourceViaContentScript(resource.url);
+      if (blob) {
+        zip.file(resource.name, blob);
+        console.log('[Zip] Added:', resource.name);
+      } else {
+        console.warn('[Zip] Failed to fetch:', resource.name);
+      }
     } catch (error) {
-      console.error('Failed to fetch ' + resource.url + ':', error);
+      console.error('[Zip] Failed to fetch ' + resource.url + ':', error);
     }
 
     if (onProgress) {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Resource } from '@/types';
 import { formatFileSize } from '@/utils/fileSize';
 import { Image, Film, Music, File, Folder, Download } from 'lucide-react';
@@ -35,6 +35,33 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
   onClick,
   onDownload,
 }) => {
+  const [imageSrc, setImageSrc] = useState<string | undefined>(resource.thumbnail);
+  const [imageError, setImageError] = useState(false);
+
+  // 当图片加载失败时，通过 content script 获取图片
+  useEffect(() => {
+    if (resource.type === 'image' && imageError && resource.thumbnail) {
+      // 通过 content script 获取图片数据
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tabId = tabs[0]?.id;
+        if (!tabId) return;
+
+        chrome.tabs.sendMessage(
+          tabId,
+          {
+            type: 'FETCH_IMAGE',
+            data: { url: resource.thumbnail },
+          },
+          (response) => {
+            if (response?.success && response.data) {
+              setImageSrc(response.data);
+            }
+          }
+        );
+      });
+    }
+  }, [resource, imageError]);
+
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.stopPropagation();
     onToggleSelect(resource.id);
@@ -47,6 +74,11 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDownload(resource);
+  };
+
+  const handleImageError = () => {
+    setImageError(true);
+    setImageSrc(undefined);
   };
 
   return (
@@ -65,14 +97,12 @@ export const ResourceItem: React.FC<ResourceItemProps> = ({
 
       {/* 预览图/图标 */}
       <div className="w-12 h-12 flex-shrink-0 rounded-md overflow-hidden bg-gray-100 flex items-center justify-center">
-        {resource.type === 'image' && resource.thumbnail ? (
+        {resource.type === 'image' && imageSrc ? (
           <img
-            src={resource.thumbnail}
+            src={imageSrc}
             alt={resource.name}
             className="w-full h-full object-cover"
-            onError={e => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
+            onError={handleImageError}
           />
         ) : (
           typeIcons[resource.type] || <Folder size={24} className="text-gray-400" />

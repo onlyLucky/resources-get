@@ -521,11 +521,87 @@ chrome.runtime.onMessage.addListener(
           .then(result => sendResponse(result))
           .catch(error => sendResponse({ success: false, error: String(error) }));
         return true; // 保持消息通道开启，等待异步响应
+
+      case 'FETCH_IMAGE':
+        // 获取图片数据（用于 403 图片预览）
+        fetchImageAsDataUrl(message.data.url)
+          .then(result => sendResponse(result))
+          .catch(error => sendResponse({ success: false, error: String(error) }));
+        return true; // 保持消息通道开启，等待异步响应
+
+      case 'FETCH_RESOURCE_BLOB':
+        // 获取资源数据（用于打包下载）
+        fetchResourceAsBlob(message.data.url)
+          .then(result => sendResponse(result))
+          .catch(error => sendResponse({ success: false, error: String(error) }));
+        return true; // 保持消息通道开启，等待异步响应
     }
 
     return true; // 保持消息通道开启
   }
 );
+
+/**
+ * 获取图片数据并转换为 data URL
+ */
+async function fetchImageAsDataUrl(url: string): Promise<{ success: boolean; data?: string }> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'blob';
+
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve({ success: true, data: reader.result as string });
+        };
+        reader.onerror = () => resolve({ success: false });
+        reader.readAsDataURL(xhr.response);
+      } else {
+        resolve({ success: false });
+      }
+    };
+
+    xhr.onerror = function() {
+      resolve({ success: false });
+    };
+
+    xhr.send();
+  });
+}
+
+/**
+ * 获取资源数据并转换为 base64
+ */
+async function fetchResourceAsBlob(url: string): Promise<{ success: boolean; data?: string; type?: string }> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'blob';
+
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        const blob = xhr.response;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve({ success: true, data: base64, type: blob.type });
+        };
+        reader.onerror = () => resolve({ success: false });
+        reader.readAsDataURL(blob);
+      } else {
+        resolve({ success: false });
+      }
+    };
+
+    xhr.onerror = function() {
+      resolve({ success: false });
+    };
+
+    xhr.send();
+  });
+}
 
 /**
  * 在 Content Script 中下载文件
