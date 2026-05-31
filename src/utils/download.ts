@@ -9,58 +9,68 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * 获取当前页面的 cookies（用于带 cookies 的请求）
- */
-async function fetchWithCredentials(url: string): Promise<Blob> {
-  // 使用带有 credentials 的 fetch 请求
-  const response = await fetch(url, {
-    credentials: 'include', // 包含 cookies
-    headers: {
-      'Referer': window.location.href,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  return response.blob();
-}
-
-/**
  * 清理文件名（移除不支持的字符）
  */
 function sanitizeFileName(fileName: string): string {
-  // 移除路径分隔符和特殊字符
   return fileName
     .replace(/[/\\:*?"<>|]/g, '_')
     .replace(/\s+/g, '_')
-    .substring(0, 200); // 限制文件名长度
+    .substring(0, 200);
 }
 
 /**
- * 使用 chrome.downloads API 下载（会使用浏览器的 cookies）
+ * 通过 Content Script 下载（会自动携带 cookies）
  */
-async function downloadByChromeAPI(resource: Resource): Promise<boolean> {
+function downloadViaContentScript(resource: Resource): Promise<boolean> {
   return new Promise((resolve) => {
-    if (chrome?.downloads?.download) {
-      const fileName = sanitizeFileName(resource.name);
-      chrome.downloads.download({
-        url: resource.url,
-        filename: fileName,
-        saveAs: false,
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.error('Chrome download error:', chrome.runtime.lastError);
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tabId = tabs[0]?.id;
+        if (!tabId) {
           resolve(false);
-        } else {
-          resolve(!!downloadId);
+          return;
         }
+
+        const fileName = sanitizeFileName(resource.name);
+        console.log('[Download] Via content script:', resource.url, fileName);
+
+        chrome.tabs.sendMessage(
+          tabId,
+          {
+            type: 'DOWNLOAD_RESOURCE',
+            data: { url: resource.url, fileName },
+          },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('[Download] Content script error:', chrome.runtime.lastError);
+              resolve(false);
+            } else {
+              console.log('[Download] Content script response:', response);
+              resolve(response?.success || false);
+            }
+          }
+        );
       });
-    } else {
+    } catch (error) {
+      console.error('[Download] Content script exception:', error);
       resolve(false);
     }
   });
+}
+
+/**
+ * 带 credentials 的 fetch 请求
+ */
+async function fetchWithCredentials(url: string): Promise<Blob> {
+  const response = await fetch(url, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('HTTP ' + response.status);
+  }
+
+  return response.blob();
 }
 
 /**
@@ -68,25 +78,17 @@ async function downloadByChromeAPI(resource: Resource): Promise<boolean> {
  */
 export async function downloadSingle(resource: Resource): Promise<void> {
   try {
-    // 优先使用 chrome.downloads API（会自动使用浏览器 cookies）
-    const success = await downloadByChromeAPI(resource);
+    console.log('[Download] Starting download:', resource.name, resource.url);
+
+    // 优先通过 Content Script 下载（会自动携带 cookies）
+    const success = await downloadViaContentScript(resource);
     if (success) return;
 
-    // 降级方案：使用 fetch 带 credentials
-    const blob = await fetchWithCredentials(resource.url);
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = resource.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    URL.revokeObjectURL(url);
-  } catch (error) {
-    console.error('Download failed:', error);
     // 最后降级：直接打开链接
+    console.log('[Download] Falling back to window.open');
+    window.open(resource.url, '_blank');
+  } catch (error) {
+    console.error('[Download] Download failed:', error);
     window.open(resource.url, '_blank');
   }
 }
@@ -97,7 +99,7 @@ export async function downloadSingle(resource: Resource): Promise<void> {
 export async function downloadAll(resources: Resource[]): Promise<void> {
   for (const resource of resources) {
     await downloadSingle(resource);
-    await delay(500); // 防止下载限制
+    await delay(500);
   }
 }
 
@@ -117,7 +119,7 @@ export async function downloadAsZip(
       const blob = await fetchWithCredentials(resource.url);
       zip.file(resource.name, blob);
     } catch (error) {
-      console.error(`Failed to fetch ${resource.url}:`, error);
+      console.error('Failed to fetch ' + resource.url + ':', error);
     }
 
     if (onProgress) {

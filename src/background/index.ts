@@ -1,5 +1,7 @@
 // Background Service Worker
 
+console.log('[Resource Sniffer] Background script loaded');
+
 // 监听插件安装事件
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[Resource Sniffer] Extension installed');
@@ -7,26 +9,33 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // 监听来自 popup 或 content script 的消息
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  switch (message.type) {
-    case 'DOWNLOAD_FILE':
-      // 处理下载请求
-      chrome.downloads.download({
-        url: message.url,
-        filename: message.filename,
-      }).then(downloadId => {
-        sendResponse({ success: true, downloadId });
-      }).catch(error => {
-        sendResponse({ success: false, error: String(error) });
-      });
-      return true;
+  console.log('[Resource Sniffer] Received message:', message.type);
 
-    case 'DOWNLOAD_BATCH':
-      // 处理批量下载请求
-      downloadBatch(message.urls).then(result => {
-        sendResponse(result);
-      });
-      return true;
+  if (message.type === 'DOWNLOAD_FILE') {
+    // 处理下载请求
+    chrome.downloads.download({
+      url: message.url,
+      filename: message.filename,
+    }).then(downloadId => {
+      sendResponse({ success: true, downloadId });
+    }).catch(error => {
+      console.error('Download error:', error);
+      sendResponse({ success: false, error: String(error) });
+    });
+    return true;
   }
+
+  if (message.type === 'DOWNLOAD_BATCH') {
+    // 处理批量下载请求
+    downloadBatch(message.urls).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: String(error) });
+    });
+    return true;
+  }
+
+  return false;
 });
 
 /**
@@ -39,9 +48,9 @@ async function downloadBatch(urls: string[]): Promise<{ success: boolean; downlo
     try {
       await chrome.downloads.download({ url });
       downloaded++;
-      await new Promise(resolve => setTimeout(resolve, 500)); // 防止下载限制
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
-      console.error(`Failed to download ${url}:`, error);
+      console.error('Failed to download ' + url + ':', error);
     }
   }
 

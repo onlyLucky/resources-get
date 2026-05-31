@@ -514,11 +514,68 @@ chrome.runtime.onMessage.addListener(
         clearAllHighlights();
         sendResponse({ success: true });
         break;
+
+      case 'DOWNLOAD_RESOURCE':
+        // 在 Content Script 中下载文件（会自动携带 cookies）
+        downloadResource(message.data.url, message.data.fileName)
+          .then(result => sendResponse(result))
+          .catch(error => sendResponse({ success: false, error: String(error) }));
+        return true; // 保持消息通道开启，等待异步响应
     }
 
     return true; // 保持消息通道开启
   }
 );
+
+/**
+ * 在 Content Script 中下载文件
+ * 使用 XMLHttpRequest 或直接创建 a 标签下载
+ */
+async function downloadResource(url: string, fileName: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    console.log('[Content] Downloading resource:', url);
+
+    // 方法1：使用 XMLHttpRequest（自动携带 cookies 和 Referer）
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', url, true);
+      xhr.responseType = 'blob';
+
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          const blob = xhr.response;
+          const blobUrl = URL.createObjectURL(blob);
+
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = fileName;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+          console.log('[Content] Download started:', fileName);
+          resolve({ success: true });
+        } else {
+          console.error('[Content] XHR failed:', xhr.status);
+          resolve({ success: false, error: 'HTTP ' + xhr.status });
+        }
+      };
+
+      xhr.onerror = function() {
+        console.error('[Content] XHR error');
+        resolve({ success: false, error: 'Network error' });
+      };
+
+      xhr.send();
+    });
+  } catch (error) {
+    console.error('[Content] Download failed:', error);
+    return { success: false, error: String(error) };
+  }
+}
 
 // 初始化：注入高亮样式
 injectHighlightStyle();
