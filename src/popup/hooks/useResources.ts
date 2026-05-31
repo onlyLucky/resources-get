@@ -16,34 +16,74 @@ export function useResources() {
   const [sortBy, setSortBy] = useState<SortBy>('size-desc');
   const [hasExtracted, setHasExtracted] = useState(false);
 
-  // 加载缓存的资源
-  useEffect(() => {
-    if (chrome?.storage?.local) {
-      chrome.storage.local.get([CACHE_KEY], (result) => {
-        if (result[CACHE_KEY]) {
-          const cached = result[CACHE_KEY];
-          // 检查缓存是否是当前标签页的（通过时间戳判断，5 分钟内有效）
-          const now = Date.now();
-          if (cached.timestamp && now - cached.timestamp < 5 * 60 * 1000) {
-            setResources(cached.resources || []);
-            setHasExtracted(true);
-          }
-        }
-      });
+  // 获取当前标签页的 URL
+  const getCurrentTabUrl = useCallback(async (): Promise<string | null> => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      return tab.url || null;
+    } catch {
+      return null;
     }
   }, []);
 
+  // 获取网站域名（用于比较是否是同一个网站）
+  const getDomain = useCallback((url: string): string => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return '';
+    }
+  }, []);
+
+  // 加载缓存的资源
+  useEffect(() => {
+    const loadCache = async () => {
+      if (!chrome?.storage?.local) return;
+
+      const currentUrl = await getCurrentTabUrl();
+      if (!currentUrl) return;
+
+      const currentDomain = getDomain(currentUrl);
+
+      chrome.storage.local.get([CACHE_KEY], (result) => {
+        if (result[CACHE_KEY]) {
+          const cached = result[CACHE_KEY];
+          const cachedDomain = getDomain(cached.url || '');
+
+          // 检查是否是同一个网站，且缓存在 5 分钟内有效
+          const now = Date.now();
+          const isValid = cachedDomain === currentDomain &&
+                          cached.timestamp &&
+                          now - cached.timestamp < 5 * 60 * 1000;
+
+          if (isValid) {
+            setResources(cached.resources || []);
+            setHasExtracted(true);
+          } else {
+            // 不是同一个网站，清除缓存
+            setResources([]);
+            setHasExtracted(false);
+          }
+        }
+      });
+    };
+
+    loadCache();
+  }, [getCurrentTabUrl, getDomain]);
+
   // 保存资源到缓存
-  const saveToCache = useCallback((resourcesToSave: Resource[]) => {
+  const saveToCache = useCallback(async (resourcesToSave: Resource[]) => {
     if (chrome?.storage?.local) {
+      const currentUrl = await getCurrentTabUrl();
       chrome.storage.local.set({
         [CACHE_KEY]: {
           resources: resourcesToSave,
+          url: currentUrl || '',
           timestamp: Date.now(),
         }
       });
     }
-  }, []);
+  }, [getCurrentTabUrl]);
 
   // 清除缓存
   const clearCache = useCallback(() => {
@@ -67,21 +107,27 @@ export function useResources() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab.id) throw new Error('No active tab');
 
-      // 先尝试注入 Content Script（如果已经注入会跳过）
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content.js'],
-        });
-      } catch (e) {
-        // 忽略注入错误（可能已经注入了）
-        console.log('Content script may already be injected');
-      }
+      // 发送消息到 Content Script，如果失败则注入后重试
+      const sendMessageToContent = async (): Promise<any> => {
+        try {
+          return await chrome.tabs.sendMessage(tab.id!, { type: 'EXTRACT_RESOURCES' });
+        } catch {
+          // Content Script 可能未加载，尝试注入
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id! },
+              files: ['content.js'],
+            });
+            // 等待脚本加载
+            await new Promise(resolve => setTimeout(resolve, 200));
+            return await chrome.tabs.sendMessage(tab.id!, { type: 'EXTRACT_RESOURCES' });
+          } catch {
+            throw new Error('无法连接到页面，请刷新页面后重试');
+          }
+        }
+      };
 
-      // 等待一小段时间确保脚本加载
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_RESOURCES' });
+      const response = await sendMessageToContent();
 
       if (response.success) {
         setResources(response.data);

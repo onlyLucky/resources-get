@@ -381,6 +381,11 @@ async function getSizeByFetch(url: string): Promise<number> {
     });
     clearTimeout(timeoutId);
 
+    // 如果是 403 或其他错误状态，直接返回 0
+    if (!response.ok) {
+      return 0;
+    }
+
     let contentLength = response.headers.get('content-length');
     if (contentLength) {
       return parseInt(contentLength, 10);
@@ -395,6 +400,11 @@ async function getSizeByFetch(url: string): Promise<number> {
       signal: controller2.signal,
     });
     clearTimeout(timeoutId2);
+
+    // 如果是 403 或其他错误状态，直接返回 0
+    if (!response.ok) {
+      return 0;
+    }
 
     contentLength = response.headers.get('content-length');
     if (contentLength) {
