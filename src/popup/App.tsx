@@ -65,10 +65,10 @@ const App: React.FC = () => {
 
   // 自动嗅探（仅在状态加载完成后且开启时执行，且未嗅探过时）
   useEffect(() => {
-    if (autoDetectLoaded && autoDetect && !hasExtracted) {
-      extractResources();
+    if (autoDetectLoaded && autoDetect && !hasExtracted && !loading) {
+      extractResources(false);
     }
-  }, [autoDetectLoaded, autoDetect, hasExtracted, extractResources]);
+  }, [autoDetectLoaded, autoDetect, hasExtracted, loading, extractResources]);
 
   // popup 关闭时清除高亮标记
   useEffect(() => {
@@ -105,26 +105,77 @@ const App: React.FC = () => {
     setCategory(newCategory);
   };
 
-  // 点击资源项 - 滚动到元素并高亮
-  const handleResourceClick = async (resource: Resource) => {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab.id) return;
+  // 发送消息到 Content Script（带重试）
+  const sendMessageToContent = async (message: any): Promise<any> => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab.id) throw new Error('No active tab');
 
-      // 高亮元素（持久高亮），传递文件名和大小
-      // Content Script 会自动处理滚动和高亮
-      await chrome.tabs.sendMessage(tab.id, {
+    try {
+      return await chrome.tabs.sendMessage(tab.id, message);
+    } catch {
+      // Content Script 可能未加载，尝试注入后重试
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js'],
+        });
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return await chrome.tabs.sendMessage(tab.id, message);
+      } catch (error) {
+        console.error('Failed to send message to content script:', error);
+        throw error;
+      }
+    }
+  };
+
+  // 点击资源项 - 滚动到元素并高亮（始终通过 URL 查找元素）
+  const handleResourceClick = async (resource: Resource) => {
+    console.log('[Popup] Click resource:', resource.name, resource.url);
+
+    try {
+      const response = await sendMessageToContent({
         type: 'HIGHLIGHT_ELEMENT',
         data: {
           url: resource.url,
           persistent: true,
           fileName: resource.name,
           fileSize: resource.size > 0 ? formatFileSize(resource.size) : undefined,
-          location: resource.location,
         },
       });
+
+      console.log('[Popup] Highlight response:', response);
+
+      if (!response?.success) {
+        console.warn('[Popup] Element not found in page, trying re-inject content script');
+
+        // 尝试重新注入 content script 后再试一次
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab.id) {
+          try {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              files: ['content.js'],
+            });
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            const retryResponse = await chrome.tabs.sendMessage(tab.id, {
+              type: 'HIGHLIGHT_ELEMENT',
+              data: {
+                url: resource.url,
+                persistent: true,
+                fileName: resource.name,
+                fileSize: resource.size > 0 ? formatFileSize(resource.size) : undefined,
+              },
+            });
+
+            console.log('[Popup] Retry response:', retryResponse);
+          } catch (retryError) {
+            console.error('[Popup] Retry failed:', retryError);
+          }
+        }
+      }
     } catch (error) {
-      console.error('Failed to scroll/highlight:', error);
+      console.error('[Popup] Failed to scroll/highlight:', error);
     }
   };
 

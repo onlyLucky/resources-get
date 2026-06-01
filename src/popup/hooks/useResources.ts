@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Resource, ResourceCategory, SortBy } from '@/types';
 
 // 缓存 key
@@ -15,6 +15,7 @@ export function useResources() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortBy>('size-desc');
   const [hasExtracted, setHasExtracted] = useState(false);
+  const lastUrlRef = useRef<string | null>(null);
 
   // 获取当前标签页的 URL
   const getCurrentTabUrl = useCallback(async (): Promise<string | null> => {
@@ -44,15 +45,20 @@ export function useResources() {
       if (!currentUrl) return;
 
       const currentDomain = getDomain(currentUrl);
+      lastUrlRef.current = currentUrl;
 
       chrome.storage.local.get([CACHE_KEY], (result) => {
         if (result[CACHE_KEY]) {
           const cached = result[CACHE_KEY];
           const cachedDomain = getDomain(cached.url || '');
+          const cachedPath = cached.url || '';
 
-          // 检查是否是同一个网站，且缓存在 5 分钟内有效
+          // 检查是否是同一个页面
+          const isSamePage = cachedPath === currentUrl;
           const now = Date.now();
-          const isValid = cachedDomain === currentDomain &&
+          // 同页面 5 分钟内有效
+          const isValid = isSamePage &&
+                          cachedDomain === currentDomain &&
                           cached.timestamp &&
                           now - cached.timestamp < 5 * 60 * 1000;
 
@@ -60,16 +66,101 @@ export function useResources() {
             setResources(cached.resources || []);
             setHasExtracted(true);
           } else {
-            // 不是同一个网站，清除缓存
+            // 不是同一个页面或缓存过期，清除缓存
             setResources([]);
             setHasExtracted(false);
+            clearCache();
           }
+        } else {
+          // 没有缓存
+          setResources([]);
+          setHasExtracted(false);
         }
       });
     };
 
     loadCache();
   }, [getCurrentTabUrl, getDomain]);
+
+  // 监听标签页更新事件（页面跳转、刷新）
+  useEffect(() => {
+    const handleTabUpdated = (
+      _tabId: number,
+      changeInfo: chrome.tabs.TabChangeInfo,
+      tab: chrome.tabs.Tab
+    ) => {
+      // 只处理当前活动标签页
+      if (!tab.active) return;
+
+      // 页面开始加载（刷新或跳转）
+      if (changeInfo.status === 'loading') {
+        const newUrl = changeInfo.url || tab.url;
+
+        // 清除资源列表和缓存（页面重新加载后 DOM 会重新生成）
+        setResources([]);
+        setHasExtracted(false);
+        setError(null);
+        clearCache();
+
+        if (newUrl) {
+          lastUrlRef.current = newUrl;
+        }
+      }
+    };
+
+    // 监听标签页更新
+    chrome.tabs.onUpdated.addListener(handleTabUpdated);
+
+    // 监听标签页激活（切换标签页）
+    const handleTabActivated = async (activeInfo: chrome.tabs.TabActiveInfo) => {
+      try {
+        const tab = await chrome.tabs.get(activeInfo.tabId);
+        const currentUrl = tab.url;
+
+        if (currentUrl && currentUrl !== lastUrlRef.current) {
+          lastUrlRef.current = currentUrl;
+
+          // 清除资源列表
+          setResources([]);
+          setHasExtracted(false);
+          setError(null);
+
+          // 尝试加载缓存
+          loadCacheForUrl(currentUrl);
+        }
+      } catch {
+        // 忽略错误
+      }
+    };
+
+    chrome.tabs.onActivated.addListener(handleTabActivated);
+
+    return () => {
+      chrome.tabs.onUpdated.removeListener(handleTabUpdated);
+      chrome.tabs.onActivated.removeListener(handleTabActivated);
+    };
+  }, []);
+
+  // 为指定 URL 加载缓存
+  const loadCacheForUrl = useCallback(async (url: string) => {
+    if (!chrome?.storage?.local) return;
+
+    chrome.storage.local.get([CACHE_KEY], (result) => {
+      if (result[CACHE_KEY]) {
+        const cached = result[CACHE_KEY];
+        const isSamePage = cached.url === url;
+        const now = Date.now();
+        const isValid = isSamePage &&
+                        cached.timestamp &&
+                        now - cached.timestamp < 5 * 60 * 1000;
+
+        if (isValid) {
+          setResources(cached.resources || []);
+          setHasExtracted(true);
+        }
+      }
+    });
+  }, [getDomain]);
 
   // 保存资源到缓存
   const saveToCache = useCallback(async (resourcesToSave: Resource[]) => {

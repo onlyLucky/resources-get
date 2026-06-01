@@ -280,13 +280,47 @@ function scrollToElement(location: { x: number; y: number; width: number; height
 }
 
 /**
+ * 获取 URL 的基础路径（去除查询参数和 hash）
+ */
+function getBaseUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.origin + urlObj.pathname;
+  } catch {
+    return url.split('?')[0].split('#')[0];
+  }
+}
+
+/**
+ * 比较两个 URL 是否匹配（支持忽略查询参数）
+ */
+function isUrlMatch(elementUrl: string, targetUrl: string): boolean {
+  if (!elementUrl || !targetUrl) return false;
+
+  // 完全匹配
+  if (elementUrl === targetUrl) return true;
+
+  // 基础路径匹配（忽略查询参数）
+  const elementBase = getBaseUrl(elementUrl);
+  const targetBase = getBaseUrl(targetUrl);
+  if (elementBase === targetBase) return true;
+
+  // 目标 URL 是元素 URL 的子集（元素 URL 包含目标 URL 的路径）
+  if (elementUrl.includes(targetBase) || targetUrl.includes(elementBase)) return true;
+
+  return false;
+}
+
+/**
  * 根据 URL 查找对应的 DOM 元素
  */
 function findElementByUrl(url: string): Element | null {
   // 查找 img 标签
   const imgs = document.querySelectorAll('img');
   for (const img of imgs) {
-    if (img.src === url || img.dataset.src === url || img.dataset.original === url) {
+    if (isUrlMatch(img.src, url) ||
+        isUrlMatch(img.dataset.src || '', url) ||
+        isUrlMatch(img.dataset.original || '', url)) {
       return img;
     }
   }
@@ -294,36 +328,49 @@ function findElementByUrl(url: string): Element | null {
   // 查找 video 标签
   const videos = document.querySelectorAll('video');
   for (const video of videos) {
-    if (video.src === url || video.poster === url) {
+    if (isUrlMatch(video.src, url) || isUrlMatch(video.poster, url)) {
       return video;
     }
     const sources = video.querySelectorAll('source');
     for (const source of sources) {
-      if (source.src === url) return video;
+      if (isUrlMatch(source.src, url)) return video;
     }
   }
 
   // 查找 audio 标签
   const audios = document.querySelectorAll('audio');
   for (const audio of audios) {
-    if (audio.src === url) return audio;
+    if (isUrlMatch(audio.src, url)) return audio;
     const sources = audio.querySelectorAll('source');
     for (const source of sources) {
-      if (source.src === url) return audio;
+      if (isUrlMatch(source.src, url)) return audio;
     }
   }
 
   // 查找 a 标签
   const links = document.querySelectorAll('a[href]');
   for (const link of links) {
-    if ((link as HTMLAnchorElement).href === url) return link;
+    if (isUrlMatch((link as HTMLAnchorElement).href, url)) return link;
   }
 
   // 查找 embed/object 标签
   const embeds = document.querySelectorAll('embed, object');
   for (const embed of embeds) {
     const src = embed.getAttribute('src') || embed.getAttribute('data');
-    if (src === url) return embed;
+    if (isUrlMatch(src || '', url)) return embed;
+  }
+
+  // 查找背景图片
+  const allElements = document.querySelectorAll('*');
+  for (const element of allElements) {
+    const style = window.getComputedStyle(element);
+    const backgroundImage = style.backgroundImage;
+    if (backgroundImage && backgroundImage !== 'none') {
+      const urlMatch = backgroundImage.match(/url\(["']?([^"')]+)["']?\)/);
+      if (urlMatch && urlMatch[1] && isUrlMatch(urlMatch[1], url)) {
+        return element;
+      }
+    }
   }
 
   return null;
@@ -495,8 +542,10 @@ chrome.runtime.onMessage.addListener(
 
       case 'HIGHLIGHT_ELEMENT':
         if (message.data?.url) {
+          console.log('[Content] Looking for element:', message.data.url);
           const element = findElementByUrl(message.data.url);
           if (element) {
+            console.log('[Content] Element found, highlighting');
             highlightElement(
               element,
               message.data.persistent || false,
@@ -505,6 +554,7 @@ chrome.runtime.onMessage.addListener(
             );
             sendResponse({ success: true });
           } else {
+            console.log('[Content] Element not found');
             sendResponse({ success: false, error: 'Element not found' });
           }
         }
